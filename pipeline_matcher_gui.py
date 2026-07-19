@@ -1,29 +1,47 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (THEMED V6)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER 
 ================================================================================
 
 PROCESS OVERVIEW:
 1. Data Loading: User selects two ILI tool run CSV files via the GUI.
-2. Dynamic Structural Mapping: Overlapping fields are parsed. Dropdown menus allow 
-   the user to dynamically assign which columns represent the Distance/Odometer 
-   and Depth features (eliminating hardcoded column dependencies).
-3. Auto-Exclusion Checklist & Warnings: The selected Distance and Depth columns are 
-   automatically filtered out of the KNN feature block. If a user manually tries 
-   to check an active mapping field, an immediate warning triggers to block leakage.
-4. Clock-to-Degree Normalization: Automatically converts angular data presented as 
-   clock positions ('hh:mm' or 'hh:mm:ss') into standard geometric degrees.
-5. Spatial Window Filtering: Enforces a physical distance search window based on the 
-   dynamically chosen distance column to block spurious global cross-pairing.
-6. Shortest Angular Distance KNN: Evaluates shortest periodic wrap-around arcs.
-7. Dual File Reporting & Visualizations: Exports master alignment sheets and unmatched 
-   anomaly files, automatically saving high-resolution evaluation charts as PNGs.
+2. Dynamic Structural Mapping: Dropdown menus allow the user to dynamically assign 
+   the Distance/Odometer and Depth columns.
+3. Auto-Exclusion Checklist & Warnings: Active mapping fields are filtered out of 
+   the KNN checklist, with a real-time warning if a user attempts to select them.
+4. Clock-to-Degree Normalization: Converts clock positions into degrees.
+5. Spatial Window Filtering: Enforces a physical maximum drift cutoff.
+6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
+7. Directory Picker & Timestamping: Prompts the user to pick a target directory, 
+   generates a unique `_YYYYMMDD_HHMMSS` timestamp string, and outputs all results
+   safely into the folder without danger of overwriting previous runs.
+
+CRITICAL ASSUMPTIONS & PREREQUISITES:
+- Anomaly Classification Filter: The input datasets MUST only include metal loss 
+  anomalies. Other feature types—such as manufacturing defects, geometric dents, 
+  mill anomalies, component markers, or cracks—must be strictly filtered out of 
+  the CSV files before attempting to load them into this script.
+- Identical Variable Naming: All fields intended for matching, along with the critical 
+  Distance/Odometer and Depth columns, must be named identically (case-sensitive) 
+  between both input files.
+- Data Type & Text Value Consistency: The format and string representations of data 
+  must match exactly between both inspection runs. For example, if one file logs 
+  an internal surface anomaly using the abbreviation "Int" and the other file logs 
+  it as "Internal", one of the files must be manually edited to match the other 
+  before running the alignment matrix.
+
+CRITICAL FIELD EXCLUSION NOTES:
+- Odometer & Joint Numbers: Identifiers like 'joint_no' or 'Item No.' must NOT 
+  be used as matching features. 
+- Depth Fields: Do NOT select 'depth' as a matching feature under any 
+  circumstances to avoid complete data leakage.
 ================================================================================
 """
 
 import os
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -43,32 +61,37 @@ class KNNMatcherGUI:
         self.columns_vars = {}
         
         # ---------------------------------------------------------
-        # SOFTENED VISUAL THEME CONFIGURATION (TTK STYLE ENGINE)
+        # NEUTRAL GRAY VISUAL THEME CONFIGURATION (TTK STYLE ENGINE)
         # ---------------------------------------------------------
         self.style = ttk.Style()
         self.style.theme_use("clam")
         
-        # Muted Corporate Color Palette
-        COLOR_BG = "#F0F4F8"          
-        COLOR_CARD_BG = "#FFFFFF"     
-        COLOR_PRIMARY = "#2B5B84"     
-        COLOR_PRIMARY_HOVER = "#3B6F9A"
-        COLOR_TEXT = "#334E68"        
-        COLOR_BORDER = "#BCCCDC"      
+        # Defining the Muted Corporate Color Palette (Neutral Gray Canvas)
+        COLOR_BG = "#E5E5E5"          # Clean, modern neutral light gray background canvas
+        COLOR_CARD_BG = "#FFFFFF"     # Crisp white for structural frame interiors
+        COLOR_PRIMARY = "#2B5B84"     # Softened Slate Navy for buttons & dropdown accents
+        COLOR_PRIMARY_HOVER = "#3B6F9A"# Gentle slate accent for interactive hover states
+        COLOR_TEXT = "#334E68"        # Soft charcoal text color for secondary labels
+        COLOR_BORDER = "#CCCCCC"      # Muted neutral gray border accent
         
+        # Apply global canvas background updates
         self.root.configure(bg=COLOR_BG)
         self.style.configure(".", background=COLOR_BG, foreground=COLOR_PRIMARY, font=("Helvetica", 10))
         
+        # Configure Main Containers and Frames
         self.style.configure("TFrame", background=COLOR_BG)
         self.style.configure("TLabelframe", background=COLOR_CARD_BG, bordercolor=COLOR_BORDER, relief="solid", borderwidth=1)
         self.style.configure("TLabelframe.Label", background=COLOR_CARD_BG, foreground=COLOR_PRIMARY, font=("Helvetica", 10, "bold"))
         
+        # Label Customizations
         self.style.configure("TLabel", background=COLOR_BG, foreground=COLOR_PRIMARY)
         self.style.configure("Card.TLabel", background=COLOR_CARD_BG, foreground=COLOR_TEXT)
         self.style.configure("Status.TLabel", background=COLOR_CARD_BG, foreground="#627D98")
         
+        # Checkbutton Background fix for White Containers
         self.style.configure("TCheckbutton", background=COLOR_CARD_BG, foreground=COLOR_PRIMARY)
         
+        # Softened Button Configuration
         self.style.configure("TButton", 
                              background=COLOR_PRIMARY, 
                              foreground="#FFFFFF", 
@@ -76,10 +99,12 @@ class KNNMatcherGUI:
                              borderwidth=0,
                              focuscolor=COLOR_PRIMARY)
         
+        # Smooth color changes when interacting with buttons
         self.style.map("TButton",
                        background=[("active", COLOR_PRIMARY_HOVER), ("disabled", "#D9E2EC")],
                        foreground=[("disabled", "#9FB3C8")])
         
+        # Muted Dropdown Selectors (Comboboxes)
         self.style.configure("TCombobox", 
                              fieldbackground="#FFFFFF", 
                              background=COLOR_PRIMARY, 
@@ -95,9 +120,11 @@ class KNNMatcherGUI:
         self.create_widgets()
 
     def create_widgets(self):
+        # Main Padding Canvas Frame
         main_frame = ttk.Frame(self.root, padding="20")
         main_frame.pack(fill=tk.BOTH, expand=True)
         
+        # App Header Banner
         title_label = ttk.Label(main_frame, text="ILI Run Alignment & Feature Matcher", 
                                  font=("Helvetica", 16, "bold"), foreground=self.style.lookup("TButton", "background"))
         title_label.pack(pady=(0, 15))
@@ -230,13 +257,11 @@ class KNNMatcherGUI:
             row = index // 2
             num_col = index % 2
             
-            # Integrated lambda trigger command to monitor checkbox interaction states live
             chk = ttk.Checkbutton(self.chk_container, text=col, variable=var,
                                   command=lambda c=col: self.validate_checkbox_selection(c))
             chk.grid(row=row, column=num_col, sticky=tk.W, padx=25, pady=4)
 
     def validate_checkbox_selection(self, col):
-        """Layer 1 Failsafe: Intercepts active checking modifications to block structural leakage."""
         if self.columns_vars[col].get():
             current_dist = self.cbo_distance.get()
             current_depth = self.cbo_depth.get()
@@ -246,8 +271,8 @@ class KNNMatcherGUI:
                 messagebox.showwarning(
                     "Data Leakage Guardrail", 
                     f"Warning: '{col}' is already mapped as the {role_label} variable in Section 2.\n\n"
-                    f"Including index attributes or matching targets as morphological features violates machine learning best practices.\n\n"
-                    f"Selection has been automatically reverted."
+                    f"Including indexing variables as morphological features violates ML validation principles.\n\n"
+                    f"Selection reverted automatically."
                 )
                 self.columns_vars[col].set(False)
 
@@ -284,14 +309,13 @@ class KNNMatcherGUI:
             
         selected_knn_features = [col for col, var in self.columns_vars.items() if var.get()]
         
-        # Layer 2 Failsafe: Hard validation check right before processing arrays
         conflicts = [col for col in selected_knn_features if col == distance_col or col == depth_col]
         if conflicts:
             messagebox.showerror(
                 "Execution Blocked", 
                 f"Conflict detected: The following features are checked in Section 3 but already mapped in Section 2:\n"
                 f"{', '.join(conflicts)}\n\n"
-                f"Please uncheck these features before executing the matching matrix."
+                f"Please uncheck these features before executing."
             )
             return
             
@@ -312,7 +336,7 @@ class KNNMatcherGUI:
                     angular_col = col
                     break
 
-            # 2. Pre-process Angular Feature if present
+            # 2. Pre-process Angular Feature
             if angular_col:
                 df1_proc[angular_col] = df1_proc[angular_col].apply(self.convert_clock_to_degrees)
                 df2_proc[angular_col] = df2_proc[angular_col].apply(self.convert_clock_to_degrees)
@@ -351,7 +375,7 @@ class KNNMatcherGUI:
             df1_proc[distance_col] = df1_proc[distance_col].fillna(0)
             df2_proc[distance_col] = df2_proc[distance_col].fillna(0)
             
-            # 4. Spatial Window Filter Loop (Bounded dynamically by user choice)
+            # 4. Spatial Window Filter Loop
             matched_indices = []
             distances = []
             MAX_ALLOWABLE_DRIFT = 200.0 
@@ -385,7 +409,7 @@ class KNNMatcherGUI:
                     matched_indices.append(candidates.index[best_match_idx])
                     distances.append(total_dists[best_match_idx])
                 
-            # 5. Build Unified Dataframe Dtype-Safe Structure
+            # 5. Build Unified Dataframe Structure
             matched_rows = []
             nan_row = pd.Series(np.nan, index=df2.columns)
             for idx in matched_indices:
@@ -403,16 +427,26 @@ class KNNMatcherGUI:
             df_final[f'{depth_col}_difference'] = df_final[depth_col] - df_final[f'{depth_col}_secondRun']
             df_final[f'{distance_col}_difference'] = df_final[distance_col] - df_final[f'{distance_col}_secondRun']
             
-            # Export CSV files
-            out_csv = 'ML2_matched_spatial_depth_change.csv'
+            # ---------------------------------------------------------
+            # DYNAMIC INTERACTIVE FOLDER PROMPT & TIMESTAMP WRITING
+            # ---------------------------------------------------------
+            save_dir = filedialog.askdirectory(title="Select Target Folder to Save All Output Files")
+            if not save_dir:
+                messagebox.showwarning("Save Cancelled", "Folder selection was not provided. Execution halted; no files written.")
+                return
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            out_csv = os.path.join(save_dir, f'ML2_matched_spatial_depth_change_{timestamp}.csv')
+            unmatched_csv = os.path.join(save_dir, f'ML2_unmatched_anomalies_{timestamp}.csv')
+            
             df_final.to_csv(out_csv, index=False)
             
             valid_mask = [idx is not None for idx in matched_indices]
             df_unmatched = df1[~np.array(valid_mask)].copy()
-            unmatched_csv = 'ML2_unmatched_anomalies.csv'
             df_unmatched.to_csv(unmatched_csv, index=False)
             
-            # 6. Generate and Automatically Save Plots (Dynamic Axis Labels)
+            # 6. Generate and Automatically Save Plots with Timestamp extensions
             sns.set_theme(style="whitegrid")
             
             fig1, ax1 = plt.subplots(figsize=(7, 5))
@@ -422,7 +456,8 @@ class KNNMatcherGUI:
             ax1.set_xlabel(f'Depth Difference ({depth_col} Base - Target)')
             ax1.legend()
             plt.tight_layout()
-            fig1.savefig('depth_change_distribution.png', dpi=300)
+            plot1_path = os.path.join(save_dir, f'depth_change_distribution_{timestamp}.png')
+            fig1.savefig(plot1_path, dpi=300)
             
             fig2, ax2 = plt.subplots(figsize=(7, 5))
             sns.scatterplot(x=depth_col, y=f'{depth_col}_secondRun', data=df_final.dropna(subset=[f'{depth_col}_secondRun']), alpha=0.6, color='#2E7D32', ax=ax2)
@@ -433,7 +468,8 @@ class KNNMatcherGUI:
             ax2.set_ylabel(f'{depth_col} in Target Run')
             ax2.legend()
             plt.tight_layout()
-            fig2.savefig('depth_comparison_scatter.png', dpi=300)
+            plot2_path = os.path.join(save_dir, f'depth_comparison_scatter_{timestamp}.png')
+            fig2.savefig(plot2_path, dpi=300)
             
             fig3, ax3 = plt.subplots(figsize=(7, 5))
             sns.histplot(data=df_final.dropna(subset=[f'{distance_col}_difference']), x=f'{distance_col}_difference', bins=50, color='#1976D2', kde=True, ax=ax3)
@@ -441,16 +477,14 @@ class KNNMatcherGUI:
             ax3.set_title(f'Odometer Drift Validation ({distance_col})', fontweight='bold')
             ax3.set_xlabel(f'{distance_col} Difference (Base - Target)')
             plt.tight_layout()
-            fig3.savefig('odometer_alignment_drift.png', dpi=300)
+            plot3_path = os.path.join(save_dir, f'odometer_alignment_drift_{timestamp}.png')
+            fig3.savefig(plot3_path, dpi=300)
             
             total_unmatched = len(df_final) - sum(valid_mask)
             messagebox.showinfo("Process Complete", 
-                                f"Success!\n\n"
-                                f"1. Master file saved to: '{out_csv}'\n"
-                                f"2. Unmatched list saved to: '{unmatched_csv}'\n\n"
-                                f"Mapped Fields:\n"
-                                f"- Distance variable: '{distance_col}'\n"
-                                f"- Depth variable: '{depth_col}'\n\n"
+                                f"Success! All assets successfully archived in target folder.\n\n"
+                                f"Saved Directory:\n'{save_dir}'\n\n"
+                                f"Filename Extension Key appended:\n'_{timestamp}'\n\n"
                                 f"Total features processed: {len(df1)}\n"
                                 f"Features lacking adjacent spatial matches: {total_unmatched}")
             plt.show()
