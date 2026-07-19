@@ -26,12 +26,12 @@ CRITICAL ASSUMPTIONS & PREREQUISITES:
   between both input files.
 - Data Type & Text Value Consistency: The format and string representations of data 
   must match exactly between both inspection runs. For example, if one file logs 
-  an internal surface anomaly using the abbreviation "Int" and the other file logs 
+  an internal anomaly using the abbreviation "Int" and the other file logs 
   it as "Internal", one of the files must be manually edited to match the other 
   before running the alignment matrix.
 
 CRITICAL FIELD EXCLUSION NOTES:
-- Odometer & Joint Numbers: Identifiers like 'joint_no' or 'Item No.' must NOT 
+- Joint Numbers: Identifiers like 'joint_no' or 'Item No.' must NOT 
   be used as matching features. 
 - Depth Fields: Do NOT select 'depth' as a matching feature under any 
   circumstances to avoid complete data leakage.
@@ -61,7 +61,7 @@ class KNNMatcherGUI:
         self.columns_vars = {}
         
         # ---------------------------------------------------------
-        # NEUTRAL GRAY VISUAL THEME CONFIGURATION (TTK STYLE ENGINE)
+        # NEUTRAL GRAY VISUAL THEME CONFIGURATION 
         # ---------------------------------------------------------
         self.style = ttk.Style()
         self.style.theme_use("clam")
