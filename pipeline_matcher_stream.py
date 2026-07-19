@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.1)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.2)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -67,12 +67,37 @@ def convert_clock_to_degrees(val):
 # --- APP HEADER BANNER ---
 st.markdown("<h2 style='color: #2B5B84; margin-bottom: 0px;'>ILI Run Alignment & Feature Matcher</h2>", unsafe_allow_html=True)
 st.markdown("<p style='color: #555; font-style: italic;'>Data Alignment Suite using Spatial Constraint & Shortest Angular Distance KNN</p>", unsafe_allow_html=True)
-st.divider() # Fixed the st.hr() error here!
+
+# --- SYSTEM OVERVIEW & ASSUMPTIONS DISPLAY (FIRST LOAD VISIBILITY) ---
+with st.expander("📖 System Overview, Operational Prerequisites & Key Assumptions", expanded=True):
+    st.markdown("""
+    ### 🔬 Engineering Assumptions & Prerequisites
+    * **Anomaly Classification Filter:** The input datasets **MUST only include metal loss anomalies**. Other feature types—such as manufacturing defects, geometric dents, cracks, mill anomalies, or component markers—must be strictly filtered out of the CSV files before loading them into this app.
+    * **Identical Variable Naming:** All fields intended for matching, along with the critical Distance/Odometer and Depth columns, must be named identically (case-sensitive) between both input files.
+    * **Data Value Consistency:** Data formats must match exactly between both inspection runs. For example, if one file logs an internal surface anomaly as `"Int"` and the other logs it as `"Internal"`, you must edit one of the files to achieve complete consistency before executing the runner.
+    
+    ### 🛡️ Critical Field Exclusion Rules
+    * **Odometer & Joint Numbers:** Identifiers like `joint_no` or `Item No.` must **NOT** be used as matching features. Joint numbering systems change frequently between runs due to newly added pipeline features, excavations, or odometer slippage.
+    * **Depth Fields:** Do **NOT** select `depth` as a matching feature under any circumstances. The direct objective of this pipeline analysis is to calculate and infer true depth change over time. Using depth to find the nearest neighbor causes total data leakage and invalidates the model.
+    """)
+
+st.divider()
 
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.markdown("### ⚙️ Processing Parameters")
 max_drift = st.sidebar.slider("Maximum Allowable Odometer Drift", min_value=50.0, max_value=1000.0, value=200.0, step=25.0)
-local_save_path = st.sidebar.text_input("Local Target Export Path (Optional)", value="./output")
+
+# --- DYNAMIC OUTPUT FOLDER SELECTION ---
+st.sidebar.markdown("### 📁 Output Configuration")
+local_save_path = st.sidebar.text_input("Target Output Directory Path", value="./output")
+verify_clicked = st.sidebar.button("📁 Verify & Initialize Folder Location")
+
+if verify_clicked:
+    try:
+        os.makedirs(local_save_path, exist_ok=True)
+        st.sidebar.success(f"✅ Directory ready & locked: '{os.path.abspath(local_save_path)}'")
+    except Exception as path_err:
+        st.sidebar.error(f"❌ Invalid Path: {str(path_err)}")
 
 # --- STEP 1: FILE SELECTION ---
 st.markdown("#### 1️⃣ Upload Inspection Data Files (CSV)")
