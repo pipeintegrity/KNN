@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.2)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.3)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -12,8 +12,8 @@ PROCESS OVERVIEW:
 4. Clock-to-Degree Normalization: Converts clock positions into degrees.
 5. Spatial Window Filtering: Enforces a physical maximum drift cutoff.
 6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
-7. Output Archiving: Safely exports data sheets and dashboard visualizations with 
-   unique `_YYYYMMDD_HHMMSS` timestamp signatures.
+7. Pure Web-Safe Exporter: Eliminates local filesystem dependencies. Generates 
+   instant download buttons for both aligned data tables and high-resolution PNG plots.
 
 CRITICAL ASSUMPTIONS & PREREQUISITES:
 - Anomaly Classification Filter: The input datasets MUST only include metal loss 
@@ -35,7 +35,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
-import os
+import io
 
 # Set clean, professional page layout
 st.set_page_config(page_title="ILI Run Alignment & KNN Matcher", layout="wide")
@@ -86,18 +86,6 @@ st.divider()
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.markdown("### ⚙️ Processing Parameters")
 max_drift = st.sidebar.slider("Maximum Allowable Odometer Drift", min_value=50.0, max_value=1000.0, value=200.0, step=25.0)
-
-# --- DYNAMIC OUTPUT FOLDER SELECTION ---
-st.sidebar.markdown("### 📁 Output Configuration")
-local_save_path = st.sidebar.text_input("Target Output Directory Path", value="./output")
-verify_clicked = st.sidebar.button("📁 Verify & Initialize Folder Location")
-
-if verify_clicked:
-    try:
-        os.makedirs(local_save_path, exist_ok=True)
-        st.sidebar.success(f"✅ Directory ready & locked: '{os.path.abspath(local_save_path)}'")
-    except Exception as path_err:
-        st.sidebar.error(f"❌ Invalid Path: {str(path_err)}")
 
 # --- STEP 1: FILE SELECTION ---
 st.markdown("#### 1️⃣ Upload Inspection Data Files (CSV)")
@@ -243,17 +231,7 @@ if file_base and file_target:
                     valid_mask = [idx is not None for idx in matched_indices]
                     df_unmatched = df1[~np.array(valid_mask)].copy()
                     total_unmatched = len(df_unmatched)
-                    
-                    # Archive to Local Path if defined and path exists
                     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                    if local_save_path:
-                        try:
-                            os.makedirs(local_save_path, exist_ok=True)
-                            df_final.to_csv(os.path.join(local_save_path, f'ML2_matched_spatial_depth_change_{timestamp}.csv'), index=False)
-                            df_unmatched.to_csv(os.path.join(local_save_path, f'ML2_unmatched_anomalies_{timestamp}.csv'), index=False)
-                            st.info(f"💾 Local copies safely written to target directory: `{local_save_path}`")
-                        except Exception as path_err:
-                            st.warning(f"Could not write directly to local filesystem path: {str(path_err)}")
 
                 st.success("🎉 Feature matching matrix generated successfully!")
                 
@@ -268,12 +246,16 @@ if file_base and file_target:
                 sns.set_theme(style="whitegrid")
                 p_col1, p_col2, p_col3 = st.columns(3)
                 
+                # Initialize binary image buffers to process download packages
+                buf1, buf2, buf3 = io.BytesIO(), io.BytesIO(), io.BytesIO()
+                
                 with p_col1:
                     fig1, ax1 = plt.subplots(figsize=(5, 4))
                     sns.histplot(data=df_final.dropna(subset=[f'{depth_col}_difference']), x=f'{depth_col}_difference', color='#4CAF50', kde=True, bins=30, ax=ax1)
                     ax1.axvline(0, color='red', linestyle='--')
                     ax1.set_title(f'Depth Change Profile ({depth_col})', fontsize=10, fontweight='bold')
                     st.pyplot(fig1)
+                    fig1.savefig(buf1, format="png", dpi=300)
                     
                 with p_col2:
                     fig2, ax2 = plt.subplots(figsize=(5, 4))
@@ -282,6 +264,7 @@ if file_base and file_target:
                     ax2.plot([0, max_val], [0, max_val], color='red', linestyle='--')
                     ax2.set_title('Depth Measurement Parity Line', fontsize=10, fontweight='bold')
                     st.pyplot(fig2)
+                    fig2.savefig(buf2, format="png", dpi=300)
                     
                 with p_col3:
                     fig3, ax3 = plt.subplots(figsize=(5, 4))
@@ -289,26 +272,53 @@ if file_base and file_target:
                     ax3.axvline(0, color='black', linestyle=':')
                     ax3.set_title('Odometer Spatial Drift Validation', fontsize=10, fontweight='bold')
                     st.pyplot(fig3)
+                    fig3.savefig(buf3, format="png", dpi=300)
 
                 # --- INSTANT WEB DOWNLOAD DOWNLOAD BUTTONS ---
                 st.markdown("### 📥 Web File Exporter Packages")
                 csv_master = df_final.to_csv(index=False).encode('utf-8')
                 csv_unmatched = df_unmatched.to_csv(index=False).encode('utf-8')
                 
-                d1, d2 = st.columns(2)
-                with d1:
+                # Organized Download Layout split cleanly between spreadsheets and layout graphics
+                d_col1, d_col2 = st.columns(2)
+                with d_col1:
+                    st.markdown("**Spreadsheet Exports (.csv)**")
                     st.download_button(
-                        label="📥 Download Aligned Master Table (CSV)",
+                        label="📥 Download Aligned Master Table",
                         data=csv_master,
                         file_name=f"ML2_matched_spatial_depth_change_{timestamp}.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        use_container_width=True
                     )
-                with d2:
                     st.download_button(
-                        label="📥 Download Unmatched Anomalies Sub-Scoped Table (CSV)",
+                        label="📥 Download Unmatched Anomalies Sub-Sheet",
                         data=csv_unmatched,
                         file_name=f"ML2_unmatched_anomalies_{timestamp}.csv",
-                        mime="text/csv"
+                        mime="text/csv",
+                        use_container_width=True
+                    )
+                with d_col2:
+                    st.markdown("**Diagnostic Graphical Exports (.png)**")
+                    st.download_button(
+                        label="🖼️ Download Depth Change Histogram Plot",
+                        data=buf1.getvalue(),
+                        file_name=f"depth_change_distribution_{timestamp}.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                    st.download_button(
+                        label="🖼️ Download Depth Comparison Scatter Plot",
+                        data=buf2.getvalue(),
+                        file_name=f"depth_comparison_scatter_{timestamp}.png",
+                        mime="image/png",
+                        use_container_width=True
+                    )
+                    st.download_button(
+                        label="🖼️ Download Odometer Drift Validation Plot",
+                        data=buf3.getvalue(),
+                        file_name=f"odometer_alignment_drift_{timestamp}.png",
+                        mime="image/png",
+                        use_container_width=True
                     )
 
     except Exception as e:
