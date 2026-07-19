@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.0)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.1)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -67,7 +67,7 @@ def convert_clock_to_degrees(val):
 # --- APP HEADER BANNER ---
 st.markdown("<h2 style='color: #2B5B84; margin-bottom: 0px;'>ILI Run Alignment & Feature Matcher</h2>", unsafe_allow_html=True)
 st.markdown("<p style='color: #555; font-style: italic;'>Data Alignment Suite using Spatial Constraint & Shortest Angular Distance KNN</p>", unsafe_allow_html=True)
-st.hr()
+st.divider() # Fixed the st.hr() error here!
 
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.markdown("### ⚙️ Processing Parameters")
