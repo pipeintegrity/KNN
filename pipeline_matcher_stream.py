@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.5)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.6)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -14,6 +14,8 @@ PROCESS OVERVIEW:
 6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
 7. Unified In-Memory ZIP Exporter: Packs aligned master sheets, unmatched anomalies, 
    and all verification plots into a single `.zip` file using the naming convention.
+8. Enhanced Custom UI Styling: Injects tailored CSS styles to provide a highly visible, 
+   softly contrasting custom action button for report extraction.
 ================================================================================
 """
 
@@ -29,6 +31,32 @@ import zipfile
 
 # Set clean, professional page layout
 st.set_page_config(page_title="ILI Run Alignment & KNN Matcher", layout="wide")
+
+# --- CUSTOM CSS BUTTON INJECTION ---
+# Targets the Streamlit download button container to apply a soft contrasting sage/teal theme
+st.markdown("""
+<style>
+    div.stDownloadButton > button {
+        background-color: #3B7A57 !important; /* Soft Corporate Sage Green */
+        color: #FFFFFF !important;             /* Crisp White Text */
+        font-weight: bold !important;
+        border-radius: 6px !important;
+        border: none !important;
+        padding: 0.6rem 1.2rem !important;
+        transition: all 0.3s ease-in-out !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1) !important;
+    }
+    div.stDownloadButton > button:hover {
+        background-color: #2C5E43 !important; /* Slightly darker muted green on hover */
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
+        transform: translateY(-1px);
+    }
+    div.stDownloadButton > button:active {
+        transform: translateY(1px);
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # Helper Functions
 def convert_clock_to_degrees(val):
@@ -275,7 +303,7 @@ if file_base and file_target:
                     buf3.seek(0)
 
                 # --- UNIFIED IN-MEMORY ZIP ARCHIVER PACKAGE ---
-                st.markdown("### 📥 Web File Exporter Packages")
+                st.markdown("### 📥 Reports & Deliverables Package")
                 
                 # Create memory canvas stream for the compressed zip data
                 zip_buffer = io.BytesIO()
@@ -296,7 +324,7 @@ if file_base and file_target:
                 
                 zip_buffer.seek(0)
                 
-                # Single Unified High-Contrast Download Triggers
+                # Single Unified Contrasting Download Trigger
                 st.download_button(
                     label="📥 Download All Aligned Datasets & Graphical Plots (.zip)",
                     data=zip_buffer.getvalue(),
