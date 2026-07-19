@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.3)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.4)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -14,17 +14,7 @@ PROCESS OVERVIEW:
 6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
 7. Pure Web-Safe Exporter: Eliminates local filesystem dependencies. Generates 
    instant download buttons for both aligned data tables and high-resolution PNG plots.
-
-CRITICAL ASSUMPTIONS & PREREQUISITES:
-- Anomaly Classification Filter: The input datasets MUST only include metal loss 
-  anomalies. Other feature types—such as manufacturing defects, geometric dents, 
-  cracks, or component markers—must be pre-filtered out.
-- Identical Variable Naming: All fields intended for matching, along with the critical 
-  Distance/Odometer and Depth columns, must be named identically (case-sensitive) 
-  between both input files.
-- Data Type & Text Value Consistency: Data formats must match exactly between both 
-  inspection runs. For example, if one file logs an internal anomaly as "Int" and 
-  the other logs it as "Internal", standardizing them first is required.
+   Filenames are dynamically generated using user-provided Pipeline Names.
 ================================================================================
 """
 
@@ -85,7 +75,14 @@ st.divider()
 
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.markdown("### ⚙️ Processing Parameters")
+pipeline_name_input = st.sidebar.text_input("Pipeline Name / System ID", placeholder="e.g., Line 42 Main")
 max_drift = st.sidebar.slider("Maximum Allowable Odometer Drift", min_value=50.0, max_value=1000.0, value=200.0, step=25.0)
+
+# Clean and format the pipeline string for file export usage (strip spaces)
+if pipeline_name_input:
+    clean_pipe_name = str(pipeline_name_input).replace(" ", "").strip()
+else:
+    clean_pipe_name = "PipelineAlignment"
 
 # --- STEP 1: FILE SELECTION ---
 st.markdown("#### 1️⃣ Upload Inspection Data Files (CSV)")
@@ -286,14 +283,14 @@ if file_base and file_target:
                     st.download_button(
                         label="📥 Download Aligned Master Table",
                         data=csv_master,
-                        file_name=f"ML2_matched_spatial_depth_change_{timestamp}.csv",
+                        file_name=f"{clean_pipe_name}_matched_spatial_depth_change_{timestamp}.csv",
                         mime="text/csv",
                         use_container_width=True
                     )
                     st.download_button(
                         label="📥 Download Unmatched Anomalies Sub-Sheet",
                         data=csv_unmatched,
-                        file_name=f"ML2_unmatched_anomalies_{timestamp}.csv",
+                        file_name=f"{clean_pipe_name}_unmatched_anomalies_{timestamp}.csv",
                         mime="text/csv",
                         use_container_width=True
                     )
@@ -302,21 +299,21 @@ if file_base and file_target:
                     st.download_button(
                         label="🖼️ Download Depth Change Histogram Plot",
                         data=buf1.getvalue(),
-                        file_name=f"depth_change_distribution_{timestamp}.png",
+                        file_name=f"{clean_pipe_name}_depth_change_distribution_{timestamp}.png",
                         mime="image/png",
                         use_container_width=True
                     )
                     st.download_button(
                         label="🖼️ Download Depth Comparison Scatter Plot",
                         data=buf2.getvalue(),
-                        file_name=f"depth_comparison_scatter_{timestamp}.png",
+                        file_name=f"{clean_pipe_name}_depth_comparison_scatter_{timestamp}.png",
                         mime="image/png",
                         use_container_width=True
                     )
                     st.download_button(
                         label="🖼️ Download Odometer Drift Validation Plot",
                         data=buf3.getvalue(),
-                        file_name=f"odometer_alignment_drift_{timestamp}.png",
+                        file_name=f"{clean_pipe_name}_odometer_alignment_drift_{timestamp}.png",
                         mime="image/png",
                         use_container_width=True
                     )
