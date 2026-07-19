@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.4)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.5)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -12,9 +12,8 @@ PROCESS OVERVIEW:
 4. Clock-to-Degree Normalization: Converts clock positions into degrees.
 5. Spatial Window Filtering: Enforces a physical maximum drift cutoff.
 6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
-7. Pure Web-Safe Exporter: Eliminates local filesystem dependencies. Generates 
-   instant download buttons for both aligned data tables and high-resolution PNG plots.
-   Filenames are dynamically generated using user-provided Pipeline Names.
+7. Unified In-Memory ZIP Exporter: Packs aligned master sheets, unmatched anomalies, 
+   and all verification plots into a single `.zip` file using the naming convention.
 ================================================================================
 """
 
@@ -26,6 +25,7 @@ import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from datetime import datetime
 import io
+import zipfile
 
 # Set clean, professional page layout
 st.set_page_config(page_title="ILI Run Alignment & KNN Matcher", layout="wide")
@@ -253,6 +253,7 @@ if file_base and file_target:
                     ax1.set_title(f'Depth Change Profile ({depth_col})', fontsize=10, fontweight='bold')
                     st.pyplot(fig1)
                     fig1.savefig(buf1, format="png", dpi=300)
+                    buf1.seek(0)
                     
                 with p_col2:
                     fig2, ax2 = plt.subplots(figsize=(5, 4))
@@ -262,6 +263,7 @@ if file_base and file_target:
                     ax2.set_title('Depth Measurement Parity Line', fontsize=10, fontweight='bold')
                     st.pyplot(fig2)
                     fig2.savefig(buf2, format="png", dpi=300)
+                    buf2.seek(0)
                     
                 with p_col3:
                     fig3, ax3 = plt.subplots(figsize=(5, 4))
@@ -270,53 +272,38 @@ if file_base and file_target:
                     ax3.set_title('Odometer Spatial Drift Validation', fontsize=10, fontweight='bold')
                     st.pyplot(fig3)
                     fig3.savefig(buf3, format="png", dpi=300)
+                    buf3.seek(0)
 
-                # --- INSTANT WEB DOWNLOAD DOWNLOAD BUTTONS ---
+                # --- UNIFIED IN-MEMORY ZIP ARCHIVER PACKAGE ---
                 st.markdown("### 📥 Web File Exporter Packages")
-                csv_master = df_final.to_csv(index=False).encode('utf-8')
-                csv_unmatched = df_unmatched.to_csv(index=False).encode('utf-8')
                 
-                # Organized Download Layout split cleanly between spreadsheets and layout graphics
-                d_col1, d_col2 = st.columns(2)
-                with d_col1:
-                    st.markdown("**Spreadsheet Exports (.csv)**")
-                    st.download_button(
-                        label="📥 Download Aligned Master Table",
-                        data=csv_master,
-                        file_name=f"{clean_pipe_name}_matched_spatial_depth_change_{timestamp}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="📥 Download Unmatched Anomalies Sub-Sheet",
-                        data=csv_unmatched,
-                        file_name=f"{clean_pipe_name}_unmatched_anomalies_{timestamp}.csv",
-                        mime="text/csv",
-                        use_container_width=True
-                    )
-                with d_col2:
-                    st.markdown("**Diagnostic Graphical Exports (.png)**")
-                    st.download_button(
-                        label="🖼️ Download Depth Change Histogram Plot",
-                        data=buf1.getvalue(),
-                        file_name=f"{clean_pipe_name}_depth_change_distribution_{timestamp}.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="🖼️ Download Depth Comparison Scatter Plot",
-                        data=buf2.getvalue(),
-                        file_name=f"{clean_pipe_name}_depth_comparison_scatter_{timestamp}.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
-                    st.download_button(
-                        label="🖼️ Download Odometer Drift Validation Plot",
-                        data=buf3.getvalue(),
-                        file_name=f"{clean_pipe_name}_odometer_alignment_drift_{timestamp}.png",
-                        mime="image/png",
-                        use_container_width=True
-                    )
+                # Create memory canvas stream for the compressed zip data
+                zip_buffer = io.BytesIO()
+                
+                with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
+                    # 1. Master Aligned Dataset
+                    csv_master = df_final.to_csv(index=False).encode('utf-8')
+                    zip_file.writestr(f"{clean_pipe_name}_matched_spatial_depth_change_{timestamp}.csv", csv_master)
+                    
+                    # 2. Pruned Outlier Anomalies Dataset
+                    csv_unmatched = df_unmatched.to_csv(index=False).encode('utf-8')
+                    zip_file.writestr(f"{clean_pipe_name}_unmatched_anomalies_{timestamp}.csv", csv_unmatched)
+                    
+                    # 3. Graphical Plots
+                    zip_file.writestr(f"{clean_pipe_name}_depth_change_distribution_{timestamp}.png", buf1.getvalue())
+                    zip_file.writestr(f"{clean_pipe_name}_depth_comparison_scatter_{timestamp}.png", buf2.getvalue())
+                    zip_file.writestr(f"{clean_pipe_name}_odometer_alignment_drift_{timestamp}.png", buf3.getvalue())
+                
+                zip_buffer.seek(0)
+                
+                # Single Unified High-Contrast Download Triggers
+                st.download_button(
+                    label="📥 Download All Aligned Datasets & Graphical Plots (.zip)",
+                    data=zip_buffer.getvalue(),
+                    file_name=f"{clean_pipe_name}_{timestamp}.zip",
+                    mime="application/zip",
+                    use_container_width=True
+                )
 
     except Exception as e:
         st.error(f"Execution Stopped due to data fault: {str(e)}")
