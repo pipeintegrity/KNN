@@ -19,7 +19,8 @@ PROCESS OVERVIEW:
 5. K-Nearest Neighbor Matching: Within the localized spatial window, a 1-NN model 
    identifies the single closest geometric match using Euclidean distance.
 6. Alignment Analysis: The runs are joined side-by-side. The baseline depth is 
-   subtracted from the matched target depth to compute change.
+   subtracted from the matched target depth to compute change. The wheel difference
+   is also calculated to measure spatial drift between tool runs.
 7. Reporting: The final combined dataframe is exported to a CSV file, individual 
    diagnostic visualizations are automatically saved as PNGs, and interactive 
    charts are displayed.
@@ -136,19 +137,14 @@ class KNNMatcherGUI:
             self.populate_features()
 
     def populate_features(self):
-        # Only populate when both files are selected
         if not self.file1_path or not self.file2_path:
             return
         
         try:
-            # Efficiently pull only column headers without parsing rows
             cols1 = pd.read_csv(self.file1_path, nrows=0).columns.tolist()
             cols2 = pd.read_csv(self.file2_path, nrows=0).columns.tolist()
-            
-            # Identify mutual columns across both runs
             mutual_cols = sorted(list(set(cols1).intersection(set(cols2))))
             
-            # Clear status placeholder text and old checkboxes
             self.lbl_status.pack_forget()
             for widget in self.chk_container.winfo_children():
                 widget.destroy()
@@ -161,22 +157,16 @@ class KNNMatcherGUI:
                 return
             
             self.chk_container.pack(fill=tk.BOTH, expand=True)
-            
-            # Default smart filters to exclude pipeline identifiers, wheel, and target inference fields
             exclude_defaults = ['depth', 'joint_no', 'item no.', 'wheel']
             
-            # Render features in a 2-column clean layout grid
             for index, col in enumerate(mutual_cols):
                 var = tk.BooleanVar()
-                
-                # Check automatically if it's not a spatial key or an identifier
                 if col.lower() not in exclude_defaults:
                     var.set(True)
                 else:
                     var.set(False)
                     
                 self.columns_vars[col] = var
-                
                 row = index // 2
                 num_col = index % 2
                 
@@ -189,7 +179,6 @@ class KNNMatcherGUI:
             messagebox.showerror("Header Parsing Error", f"Could not read column headers:\n{str(e)}")
 
     def execute_processing(self):
-        # Validate selections
         selected_knn_features = [col for col, var in self.columns_vars.items() if var.get()]
         
         if not selected_knn_features:
@@ -203,7 +192,6 @@ class KNNMatcherGUI:
             df1 = pd.read_csv(self.file1_path)
             df2 = pd.read_csv(self.file2_path)
             
-            # Verification of required baseline keys
             required_keys = ['wheel', 'depth']
             for key in required_keys:
                 if key not in df1.columns or key not in df2.columns:
@@ -214,9 +202,7 @@ class KNNMatcherGUI:
             encoded_features = []
             
             for col in selected_knn_features:
-                # FIXED: Checks if column is non-numeric, capturing object, string, and category dtypes perfectly
                 if not pd.api.types.is_numeric_dtype(df1_proc[col]) or not pd.api.types.is_numeric_dtype(df2_proc[col]):
-                    # Convert categories dynamically to consistent numeric values across data frames
                     combined_series = pd.concat([df1_proc[col], df2_proc[col]]).astype('category')
                     mapping = dict(enumerate(combined_series.cat.categories))
                     reverse_mapping = {v: k for k, v in mapping.items()}
@@ -246,12 +232,9 @@ class KNNMatcherGUI:
             
             for i, row in X1_scaled.iterrows():
                 w_val = row['wheel']
-                
-                # Check spatial constraint block
                 candidates = X2_scaled[(X2_scaled['wheel'] >= w_val - window_size) & 
                                        (X2_scaled['wheel'] <= w_val + window_size)]
                 
-                # Expand dynamically if needed
                 if len(candidates) == 0:
                     candidates = X2_scaled[(X2_scaled['wheel'] >= w_val - 500) & 
                                            (X2_scaled['wheel'] <= w_val + 500)]
@@ -274,6 +257,9 @@ class KNNMatcherGUI:
             df_final = pd.concat([df1.reset_index(drop=True), df_matched_2], axis=1)
             df_final['knn_distance'] = distances
             df_final['depth_difference'] = df_final['depth'] - df_final['depth_secondRun']
+            
+            # CALCULATE WHEEL DIFFERENCE (Added field saved to final dataframe and exported CSV)
+            df_final['wheel_difference'] = df_final['wheel'] - df_final['wheel_secondRun']
             
             # Export output CSV
             out_csv = 'ML2_matched_spatial_depth_change.csv'
@@ -304,20 +290,20 @@ class KNNMatcherGUI:
             plt.tight_layout()
             fig2.savefig('depth_comparison_scatter.png', dpi=300)
             
-            # Plot C: Wheel Drift Quality
+            # Plot C: Wheel Drift Quality (Utilizes updated wheel_difference column)
             fig3, ax3 = plt.subplots(figsize=(7, 5))
-            w_drift = df_final['wheel'] - df_final['wheel_secondRun']
-            sns.histplot(w_drift, bins=50, color='#1976D2', kde=True, ax=ax3)
+            sns.histplot(df_final['wheel_difference'], bins=50, color='#1976D2', kde=True, ax=ax3)
             ax3.set_xlim(-200, 200)
             ax3.axvline(0, color='black', linestyle=':')
             ax3.set_title('Odometer Run Alignment Verification', fontweight='bold')
-            ax3.set_xlabel('Odometer Distance Drift Units')
+            ax3.set_xlabel('Odometer Distance Drift Units (Base Wheel - Target Wheel)')
             plt.tight_layout()
             fig3.savefig('odometer_alignment_drift.png', dpi=300)
             
             # Notify User of successful data storage
             messagebox.showinfo("Process Complete", 
                                 f"Success!\n\n1. Output file written to: '{out_csv}'"
+                                f"\n   (Includes 'depth_difference' and new 'wheel_difference' columns)"
                                 f"\n2. Three individual evaluation plots saved successfully (.png files)."
                                 f"\n\nClick OK to open interactive chart panels.")
             
