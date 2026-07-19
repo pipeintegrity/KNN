@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (DYNAMIC V3)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (THEMED V6)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -8,15 +8,16 @@ PROCESS OVERVIEW:
 2. Dynamic Structural Mapping: Overlapping fields are parsed. Dropdown menus allow 
    the user to dynamically assign which columns represent the Distance/Odometer 
    and Depth features (eliminating hardcoded column dependencies).
-3. Auto-Exclusion Checklist: The selected Distance and Depth columns are automatically 
-   filtered out of the KNN feature block to strictly enforce best practices.
+3. Auto-Exclusion Checklist & Warnings: The selected Distance and Depth columns are 
+   automatically filtered out of the KNN feature block. If a user manually tries 
+   to check an active mapping field, an immediate warning triggers to block leakage.
 4. Clock-to-Degree Normalization: Automatically converts angular data presented as 
    clock positions ('hh:mm' or 'hh:mm:ss') into standard geometric degrees.
 5. Spatial Window Filtering: Enforces a physical distance search window based on the 
    dynamically chosen distance column to block spurious global cross-pairing.
 6. Shortest Angular Distance KNN: Evaluates shortest periodic wrap-around arcs.
 7. Dual File Reporting & Visualizations: Exports master alignment sheets and unmatched 
-   anomaly files, using the user's chosen column names for the output delta fields.
+   anomaly files, automatically saving high-resolution evaluation charts as PNGs.
 ================================================================================
 """
 
@@ -32,8 +33,8 @@ from sklearn.preprocessing import StandardScaler
 class KNNMatcherGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Pipeline ILI Data Alignment & KNN Matcher (Dynamic)")
-        self.root.geometry("600x650")
+        self.root.title("Pipeline ILI Data Alignment & KNN Matcher")
+        self.root.geometry("600x670")
         self.root.resizable(False, False)
         
         self.file1_path = ""
@@ -41,8 +42,56 @@ class KNNMatcherGUI:
         self.mutual_cols = []
         self.columns_vars = {}
         
+        # ---------------------------------------------------------
+        # SOFTENED VISUAL THEME CONFIGURATION (TTK STYLE ENGINE)
+        # ---------------------------------------------------------
         self.style = ttk.Style()
         self.style.theme_use("clam")
+        
+        # Muted Corporate Color Palette
+        COLOR_BG = "#F0F4F8"          
+        COLOR_CARD_BG = "#FFFFFF"     
+        COLOR_PRIMARY = "#2B5B84"     
+        COLOR_PRIMARY_HOVER = "#3B6F9A"
+        COLOR_TEXT = "#334E68"        
+        COLOR_BORDER = "#BCCCDC"      
+        
+        self.root.configure(bg=COLOR_BG)
+        self.style.configure(".", background=COLOR_BG, foreground=COLOR_PRIMARY, font=("Helvetica", 10))
+        
+        self.style.configure("TFrame", background=COLOR_BG)
+        self.style.configure("TLabelframe", background=COLOR_CARD_BG, bordercolor=COLOR_BORDER, relief="solid", borderwidth=1)
+        self.style.configure("TLabelframe.Label", background=COLOR_CARD_BG, foreground=COLOR_PRIMARY, font=("Helvetica", 10, "bold"))
+        
+        self.style.configure("TLabel", background=COLOR_BG, foreground=COLOR_PRIMARY)
+        self.style.configure("Card.TLabel", background=COLOR_CARD_BG, foreground=COLOR_TEXT)
+        self.style.configure("Status.TLabel", background=COLOR_CARD_BG, foreground="#627D98")
+        
+        self.style.configure("TCheckbutton", background=COLOR_CARD_BG, foreground=COLOR_PRIMARY)
+        
+        self.style.configure("TButton", 
+                             background=COLOR_PRIMARY, 
+                             foreground="#FFFFFF", 
+                             font=("Helvetica", 10, "bold"),
+                             borderwidth=0,
+                             focuscolor=COLOR_PRIMARY)
+        
+        self.style.map("TButton",
+                       background=[("active", COLOR_PRIMARY_HOVER), ("disabled", "#D9E2EC")],
+                       foreground=[("disabled", "#9FB3C8")])
+        
+        self.style.configure("TCombobox", 
+                             fieldbackground="#FFFFFF", 
+                             background=COLOR_PRIMARY, 
+                             foreground=COLOR_PRIMARY, 
+                             arrowcolor="#FFFFFF",
+                             bordercolor=COLOR_BORDER,
+                             lightcolor=COLOR_BORDER,
+                             darkcolor=COLOR_BORDER)
+        self.style.map("TCombobox", 
+                       fieldbackground=[("readonly", "#FFFFFF")],
+                       foreground=[("readonly", COLOR_PRIMARY)])
+
         self.create_widgets()
 
     def create_widgets(self):
@@ -50,53 +99,55 @@ class KNNMatcherGUI:
         main_frame.pack(fill=tk.BOTH, expand=True)
         
         title_label = ttk.Label(main_frame, text="ILI Run Alignment & Feature Matcher", 
-                                 font=("Helvetica", 15, "bold"), foreground="#2E7D32")
-        title_label.pack(pady=(0, 10))
+                                 font=("Helvetica", 16, "bold"), foreground=self.style.lookup("TButton", "background"))
+        title_label.pack(pady=(0, 15))
         
         # SECTION 1: File Selection Frame
-        file_frame = ttk.LabelFrame(main_frame, text=" 1. Select Inspection Data Files (CSV) ", padding="10")
+        file_frame = ttk.LabelFrame(main_frame, text=" 1. Select Inspection Data Files (CSV) ", padding="15")
         file_frame.pack(fill=tk.X, pady=5)
         
-        self.lbl_file1 = ttk.Label(file_frame, text="Base Run: Not selected", font=("Arial", 9, "italic"))
-        self.lbl_file1.grid(row=0, column=0, sticky=tk.W, pady=2)
-        btn_file1 = ttk.Button(file_frame, text="Browse Base File", command=self.browse_file1)
-        btn_file1.grid(row=0, column=1, sticky=tk.E, padx=5, pady=2)
+        self.lbl_file1 = ttk.Label(file_frame, text="Base Run: Not selected", style="Card.TLabel", font=("Arial", 9, "italic"))
+        self.lbl_file1.grid(row=0, column=0, sticky=tk.W, pady=4)
+        btn_file1 = ttk.Button(file_frame, text="Browse Base File", command=self.browse_file1, width=18)
+        btn_file1.grid(row=0, column=1, sticky=tk.E, padx=5, pady=4)
         
-        self.lbl_file2 = ttk.Label(file_frame, text="Target Run: Not selected", font=("Arial", 9, "italic"))
-        self.lbl_file2.grid(row=1, column=0, sticky=tk.W, pady=2)
-        btn_file2 = ttk.Button(file_frame, text="Browse Target File", command=self.browse_file2)
-        btn_file2.grid(row=1, column=1, sticky=tk.E, padx=5, pady=2)
+        self.lbl_file2 = ttk.Label(file_frame, text="Target Run: Not selected", style="Card.TLabel", font=("Arial", 9, "italic"))
+        self.lbl_file2.grid(row=1, column=0, sticky=tk.W, pady=4)
+        btn_file2 = ttk.Button(file_frame, text="Browse Target File", command=self.browse_file2, width=18)
+        btn_file2.grid(row=1, column=1, sticky=tk.E, padx=5, pady=4)
         file_frame.columnconfigure(0, weight=1)
 
-        # SECTION 2: Dynamic Column Mapping Frame (New Dropdown System)
-        mapping_frame = ttk.LabelFrame(main_frame, text=" 2. Map Critical Pipeline Columns ", padding="10")
+        # SECTION 2: Dynamic Column Mapping Dropdowns
+        mapping_frame = ttk.LabelFrame(main_frame, text=" 2. Map Critical Pipeline Columns ", padding="15")
         mapping_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Label(mapping_frame, text="Distance/Odometer Column:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=4)
+        lbl_dist = ttk.Label(mapping_frame, text="Distance/Odometer Column:", style="Card.TLabel")
+        lbl_dist.grid(row=0, column=0, sticky=tk.W, padx=5, pady=6)
         self.cbo_distance = ttk.Combobox(mapping_frame, state="readonly", width=25)
-        self.cbo_distance.grid(row=0, column=1, sticky=tk.E, padx=5, pady=4)
+        self.cbo_distance.grid(row=0, column=1, sticky=tk.E, padx=5, pady=6)
         self.cbo_distance.bind("<<ComboboxSelected>>", self.refresh_checkboxes)
         
-        ttk.Label(mapping_frame, text="Depth Column:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=4)
+        lbl_dpth = ttk.Label(mapping_frame, text="Depth Column:", style="Card.TLabel")
+        lbl_dpth.grid(row=1, column=0, sticky=tk.W, padx=5, pady=6)
         self.cbo_depth = ttk.Combobox(mapping_frame, state="readonly", width=25)
-        self.cbo_depth.grid(row=1, column=1, sticky=tk.E, padx=5, pady=4)
+        self.cbo_depth.grid(row=1, column=1, sticky=tk.E, padx=5, pady=6)
         self.cbo_depth.bind("<<ComboboxSelected>>", self.refresh_checkboxes)
         mapping_frame.columnconfigure(1, weight=1)
 
         # SECTION 3: Feature Checklist Frame
-        self.feature_frame = ttk.LabelFrame(main_frame, text=" 3. Select Morphological Fields for KNN Distance Matching ", padding="10")
+        self.feature_frame = ttk.LabelFrame(main_frame, text=" 3. Select Morphological Fields for KNN Distance Matching ", padding="15")
         self.feature_frame.pack(fill=tk.BOTH, expand=True, pady=5)
         
         self.lbl_status = ttk.Label(self.feature_frame, text="Select data files above to populate available features.", 
-                                    font=("Arial", 10, "italic"), foreground="gray")
-        self.lbl_status.pack(pady=30)
+                                    style="Status.TLabel", font=("Arial", 10, "italic"))
+        self.lbl_status.pack(pady=40)
         
-        self.chk_container = ttk.Frame(self.feature_frame)
+        self.chk_container = tk.Frame(self.feature_frame, bg="#FFFFFF")
         
-        # SECTION 4: Action Execution Block
+        # SECTION 4: Execution Core Trigger
         self.btn_run = ttk.Button(main_frame, text="🚀 Run Spatial Alignment & KNN Matching", 
                                   command=self.execute_processing, state=tk.DISABLED)
-        self.btn_run.pack(fill=tk.X, ipady=4, pady=(5, 0))
+        self.btn_run.pack(fill=tk.X, ipady=6, pady=(10, 0))
 
     def browse_file1(self):
         path = filedialog.askopenfilename(filetypes=[("CSV Files", "*.csv")])
@@ -122,12 +173,11 @@ class KNNMatcherGUI:
             self.mutual_cols = sorted(list(set(cols1).intersection(set(cols2))))
             
             if not self.mutual_cols:
-                self.lbl_status.pack(pady=30)
+                self.lbl_status.pack(pady=40)
                 self.lbl_status.config(text="Error: No overlapping column names found between these files.")
                 self.btn_run.config(state=tk.DISABLED)
                 return
             
-            # Find smart defaults dynamically for the mapping dropdown selectors
             dist_default = ""
             depth_default = ""
             for col in self.mutual_cols:
@@ -148,7 +198,6 @@ class KNNMatcherGUI:
             elif self.mutual_cols:
                 self.cbo_depth.current(min(1, len(self.mutual_cols)-1))
             
-            # Draw checklist box contents
             self.lbl_status.pack_forget()
             self.chk_container.pack(fill=tk.BOTH, expand=True)
             self.refresh_checkboxes()
@@ -158,14 +207,12 @@ class KNNMatcherGUI:
             messagebox.showerror("Header Parsing Error", f"Could not read column headers:\n{str(e)}")
 
     def refresh_checkboxes(self, event=None):
-        """Redraws the feature list automatically excluding mapping dropdown choices."""
         if not self.mutual_cols:
             return
         
         current_dist = self.cbo_distance.get()
         current_depth = self.cbo_depth.get()
         
-        # Clear old checkbox structures safely
         for widget in self.chk_container.winfo_children():
             widget.destroy()
         self.columns_vars.clear()
@@ -174,7 +221,6 @@ class KNNMatcherGUI:
         
         for index, col in enumerate(self.mutual_cols):
             var = tk.BooleanVar()
-            # Default check morph features, uncheck indices and core mapping columns
             if col.lower() not in exclude_defaults and col != current_dist and col != current_depth:
                 var.set(True)
             else:
@@ -184,8 +230,26 @@ class KNNMatcherGUI:
             row = index // 2
             num_col = index % 2
             
-            chk = ttk.Checkbutton(self.chk_container, text=col, variable=var)
+            # Integrated lambda trigger command to monitor checkbox interaction states live
+            chk = ttk.Checkbutton(self.chk_container, text=col, variable=var,
+                                  command=lambda c=col: self.validate_checkbox_selection(c))
             chk.grid(row=row, column=num_col, sticky=tk.W, padx=25, pady=4)
+
+    def validate_checkbox_selection(self, col):
+        """Layer 1 Failsafe: Intercepts active checking modifications to block structural leakage."""
+        if self.columns_vars[col].get():
+            current_dist = self.cbo_distance.get()
+            current_depth = self.cbo_depth.get()
+            
+            if col == current_dist or col == current_depth:
+                role_label = "Distance/Odometer" if col == current_dist else "Depth Inference"
+                messagebox.showwarning(
+                    "Data Leakage Guardrail", 
+                    f"Warning: '{col}' is already mapped as the {role_label} variable in Section 2.\n\n"
+                    f"Including index attributes or matching targets as morphological features violates machine learning best practices.\n\n"
+                    f"Selection has been automatically reverted."
+                )
+                self.columns_vars[col].set(False)
 
     def convert_clock_to_degrees(self, val):
         if pd.isna(val):
@@ -219,9 +283,18 @@ class KNNMatcherGUI:
             return
             
         selected_knn_features = [col for col, var in self.columns_vars.items() if var.get()]
-        # Enforcement filter step: Make sure distance and depth variables are explicitly stripped out of KNN space
-        selected_knn_features = [col for col in selected_knn_features if col != distance_col and col != depth_col]
         
+        # Layer 2 Failsafe: Hard validation check right before processing arrays
+        conflicts = [col for col in selected_knn_features if col == distance_col or col == depth_col]
+        if conflicts:
+            messagebox.showerror(
+                "Execution Blocked", 
+                f"Conflict detected: The following features are checked in Section 3 but already mapped in Section 2:\n"
+                f"{', '.join(conflicts)}\n\n"
+                f"Please uncheck these features before executing the matching matrix."
+            )
+            return
+            
         if not selected_knn_features:
             messagebox.showwarning("Selection Missing", "Please select at least one feature field to compute KNN distance metrics.")
             return
@@ -233,7 +306,6 @@ class KNNMatcherGUI:
             
             df1_proc, df2_proc = df1.copy(), df2.copy()
             
-            # Identify if an angular column exists in selected matching fields
             angular_col = None
             for col in selected_knn_features:
                 if col.lower() in ['degrees', 'orientation', 'clock']:
@@ -276,7 +348,6 @@ class KNNMatcherGUI:
                 X1_linear_scaled = scaler.transform(df1_proc[encoded_linear_features])
                 X2_linear_scaled = scaler.transform(df2_proc[encoded_linear_features])
             
-            # Clean missing rows out of critical dynamic spatial positioning variables
             df1_proc[distance_col] = df1_proc[distance_col].fillna(0)
             df2_proc[distance_col] = df2_proc[distance_col].fillna(0)
             
@@ -329,7 +400,6 @@ class KNNMatcherGUI:
             df_final = pd.concat([df1.reset_index(drop=True), df_matched_2], axis=1)
             df_final['knn_distance'] = distances
             
-            # Dynamic output calculations using mapped headers
             df_final[f'{depth_col}_difference'] = df_final[depth_col] - df_final[f'{depth_col}_secondRun']
             df_final[f'{distance_col}_difference'] = df_final[distance_col] - df_final[f'{distance_col}_secondRun']
             
