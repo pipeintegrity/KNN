@@ -276,7 +276,7 @@ if file_base and file_target:
                 
                 with p_col1:
                     fig1, ax1 = plt.subplots(figsize=(5, 4))
-                    sns.histplot(data=df_final.dropna(subset=[f'{depth_col}_difference']), x=f'{depth_col} difference', color='#4CAF50', kde=True, bins=30, ax=ax1)
+                    sns.histplot(data=df_final.dropna(subset=[f'{depth_col}_difference']), x=f'{depth_col}_difference', color='#4CAF50', kde=True, bins=30, ax=ax1)
                     ax1.axvline(0, color='red', linestyle='--')
                     ax1.set_title(f'Depth Change Profile ({depth_col})', fontsize=10, fontweight='bold')
                     st.pyplot(fig1)
@@ -295,7 +295,7 @@ if file_base and file_target:
                     
                 with p_col3:
                     fig3, ax3 = plt.subplots(figsize=(5, 4))
-                    sns.histplot(data=df_final.dropna(subset=[f'{distance_col}_difference']), x=f'{distance_col} difference', bins=30, color='#1976D2', kde=True, ax=ax3)
+                    sns.histplot(data=df_final.dropna(subset=[f'{distance_col}_difference']), x=f'{distance_col}_difference', bins=30, color='#1976D2', kde=True, ax=ax3)
                     ax3.axvline(0, color='black', linestyle=':')
                     ax3.set_title('Odometer Spatial Drift Validation', fontsize=10, fontweight='bold')
                     st.pyplot(fig3)
