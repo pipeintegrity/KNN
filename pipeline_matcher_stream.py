@@ -352,7 +352,7 @@ def create_quality_report(match_stats, distance_col, depth_col, df_final):
         "=" * 80,
         "KNN MATCHING QUALITY REPORT",
         "=" * 80,
-        f"Generated: {datetime.().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
         "MATCH STATISTICS:",
         f"  Total Base Rows:     {match_stats['total_base_rows']}",
