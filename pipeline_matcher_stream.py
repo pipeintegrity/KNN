@@ -351,6 +351,10 @@ with st.expander("📖 System Overview, Operational Prerequisites & Key Assumpti
     ### ⚡ Performance Notes
     * Features are now processed with **vectorized distance matrix computation** for O(n·m) efficiency.
     * Match quality statistics are included in the report.
+    
+    ### ⚡ Performance Notes
+    * Features are now processed with **vectorized distance matrix computation** for O(n·m) efficiency.
+    * Match quality statistics are included in the report.
     """)
 
 st.divider()
