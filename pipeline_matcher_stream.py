@@ -352,7 +352,7 @@ def create_quality_report(match_stats, distance_col, depth_col, df_final):
         "=" * 80,
         "KNN MATCHING QUALITY REPORT",
         "=" * 80,
-        f"Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+        f"Generated: {datetime.().strftime('%Y-%m-%d %H:%M:%S')}",
         "",
         "MATCH STATISTICS:",
         f"  Total Base Rows:     {match_stats['total_base_rows']}",
@@ -467,10 +467,10 @@ with st.expander("📖 System Overview, Operational Prerequisites & Key Assumpti
     ### 🛡️ Critical Field Exclusion Rules
     * **Odometer & Joint Numbers:** Identifiers like `joint_no` or `Item No.` must **NOT** be used as matching features.
     * **Depth Fields:** Do **NOT** select `depth` as a matching feature. Depth change is the output metric.
-    * **Data Leakage:** System now enforces hard validation against leakage.
+    * **Data Leakage:** System enforces hard validation against leakage.
     
     ### ⚡ Performance Notes
-    * Features are now processed with **vectorized distance matrix computation** for O(n·m) efficiency.
+    * Features are processed with **vectorized distance matrix computation** efficiency.
     * Match quality statistics are included in the report.
     """)
 
