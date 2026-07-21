@@ -1,6 +1,6 @@
 """
 ================================================================================
-PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V1.8)
+PIPELINE INLINE INSPECTION (ILI) RUN ALIGNMENT & FEATURE MATCHER (STREAMLIT V2.1)
 ================================================================================
 
 PROCESS OVERVIEW:
@@ -12,19 +12,10 @@ PROCESS OVERVIEW:
 4. Clock-to-Degree Normalization: Converts clock positions into degrees.
 5. Spatial Window Filtering: Enforces a physical maximum drift cutoff.
 6. Shortest Angular Distance KNN: Matches features based on wrap-around arc length.
-7. Unified In-Memory ZIP Exporter: Packs aligned master sheets, unmatched anomalies, 
-   and all verification plots into a single `.zip` file using the naming convention.
-
-CRITICAL ASSUMPTIONS & PREREQUISITES:
-- Anomaly Classification Filter: The input datasets MUST only include metal loss 
-  anomalies. Other feature types—such as manufacturing defects, geometric dents, 
-  cracks, or component markers—must be pre-filtered out.
-- Identical Variable Naming: All fields intended for matching, along with the critical 
-  Distance/Odometer and Depth columns, must be named identically (case-sensitive) 
-  between both input files.
-- Data Type & Text Value Consistency: Data formats must match exactly between both 
-  inspection runs. For example, if one file logs an internal anomaly as "Int" and 
-  the other logs it as "Internal", standardizing them first is required.
+7. Delta Difference Computation: Calculates depth and odometer differences strictly 
+   as (Second Run - First Run).
+8. Unified ZIP Exporter: Packs the Master Alignment Sheet, Unmatched Anomalies, 
+   Audit Reports, and Verification Plots into a single `.zip` archive.
 ================================================================================
 """
 
@@ -274,7 +265,7 @@ def create_quality_report(match_stats, distance_col, depth_col, df_final):
         valid_depth_diffs = df_final[depth_diff_col].dropna()
         if len(valid_depth_diffs) > 0:
             lines.extend([
-                f"DEPTH CHANGE ({depth_col}):",
+                f"DEPTH CHANGE ({depth_col} [Second Run - First Run]):",
                 f"  Mean Difference:     {valid_depth_diffs.mean():.6f}",
                 f"  Median Difference:   {valid_depth_diffs.median():.6f}",
                 f"  Std Dev:             {valid_depth_diffs.std():.6f}",
@@ -287,7 +278,7 @@ def create_quality_report(match_stats, distance_col, depth_col, df_final):
         valid_dist_diffs = df_final[dist_diff_col].dropna()
         if len(valid_dist_diffs) > 0:
             lines.extend([
-                f"ODOMETER DRIFT ({distance_col}):",
+                f"ODOMETER DRIFT ({distance_col} [Second Run - First Run]):",
                 f"  Mean Difference:     {valid_dist_diffs.mean():.6f}",
                 f"  Median Difference:   {valid_dist_diffs.median():.6f}",
                 f"  Std Dev:             {valid_dist_diffs.std():.6f}",
@@ -349,12 +340,9 @@ with st.expander("📖 System Overview, Operational Prerequisites & Key Assumpti
     * **Depth Fields:** Do **NOT** select `depth` as a matching feature under any circumstances. The direct objective of this pipeline analysis is to calculate and infer true depth change over time. Using depth to find the nearest neighbor causes total data leakage and invalidates the model.
     
     ### ⚡ Performance Notes
-    * Features are now processed with **vectorized distance matrix computation** for O(n·m) efficiency.
-    * Match quality statistics are included in the report.
-    
-    ### ⚡ Performance Notes
-    * Features are now processed with **vectorized distance matrix computation** for O(n·m) efficiency.
-    * Match quality statistics are included in the report.
+    * Features are processed with **vectorized distance matrix computation** for optimal computational efficiency.
+    * Differences for depth and odometer/wheel values are calculated strictly as **Second Run - First Run**.
+    * Match quality statistics are included in the output report package.
     """)
 
 st.divider()
@@ -374,9 +362,9 @@ st.markdown("#### 1️⃣ Upload Inspection Data Files (CSV)")
 col1, col2 = st.columns(2)
 
 with col1:
-    file_base = st.file_uploader("Upload Base Run Dataset (e.g., 2005)", type=["csv"], key="base_file")
+    file_base = st.file_uploader("Upload Base Run Dataset [1st Run] (e.g., 2005)", type=["csv"], key="base_file")
 with col2:
-    file_target = st.file_uploader("Upload Target Run Dataset (e.g., 2011)", type=["csv"], key="target_file")
+    file_target = st.file_uploader("Upload Target Run Dataset [2nd Run] (e.g., 2011)", type=["csv"], key="target_file")
 
 if file_base and file_target:
     try:
@@ -492,8 +480,10 @@ if file_base and file_target:
                     
                     df_final = pd.concat([df1.reset_index(drop=True), df_matched_2], axis=1)
                     df_final['knn_distance'] = distances
-                    df_final[f'{depth_col}_difference'] = df_final[depth_col] - df_final[f'{depth_col}_secondRun']
-                    df_final[f'{distance_col}_difference'] = df_final[distance_col] - df_final[f'{distance_col}_secondRun']
+                    
+                    # DIRECT DIFFERENCE CALCULATION: Second Run minus First Run
+                    df_final[f'{depth_col}_difference'] = df_final[f'{depth_col}_secondRun'] - df_final[depth_col]
+                    df_final[f'{distance_col}_difference'] = df_final[f'{distance_col}_secondRun'] - df_final[distance_col]
                     
                     valid_mask = [idx is not None for idx in matched_indices]
                     df_unmatched = df1[~np.array(valid_mask)].copy()
@@ -519,7 +509,7 @@ if file_base and file_target:
                     fig1, ax1 = plt.subplots(figsize=(5, 4))
                     sns.histplot(data=df_final.dropna(subset=[f'{depth_col}_difference']), x=f'{depth_col}_difference', color='#4CAF50', kde=True, bins=30, ax=ax1)
                     ax1.axvline(0, color='red', linestyle='--')
-                    ax1.set_title(f'Depth Change Profile ({depth_col})', fontsize=10, fontweight='bold')
+                    ax1.set_title(f'Depth Change ({depth_col} [2nd - 1st])', fontsize=10, fontweight='bold')
                     st.pyplot(fig1)
                     fig1.savefig(buf1, format="png", dpi=300)
                     buf1.seek(0)
@@ -538,7 +528,7 @@ if file_base and file_target:
                     fig3, ax3 = plt.subplots(figsize=(5, 4))
                     sns.histplot(data=df_final.dropna(subset=[f'{distance_col}_difference']), x=f'{distance_col}_difference', bins=30, color='#1976D2', kde=True, ax=ax3)
                     ax3.axvline(0, color='black', linestyle=':')
-                    ax3.set_title('Odometer Spatial Drift Validation', fontsize=10, fontweight='bold')
+                    ax3.set_title(f'Odometer Drift ({distance_col} [2nd - 1st])', fontsize=10, fontweight='bold')
                     st.pyplot(fig3)
                     fig3.savefig(buf3, format="png", dpi=300)
                     buf3.seek(0)
@@ -546,7 +536,6 @@ if file_base and file_target:
                 # --- UNIFIED IN-MEMORY ZIP ARCHIVER PACKAGE ---
                 st.markdown("### 📥 Reports & Deliverables Package")
                 
-                # Generate quality logs directly from internal report functions
                 text_quality_report = create_quality_report(match_stats, distance_col, depth_col, df_final)
                 text_unmatched_summary = create_unmatched_summary(df_unmatched, distance_col)
                 
